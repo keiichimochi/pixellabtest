@@ -1,28 +1,13 @@
-# 環境変数
-.env
-
-# 生成された画像
-*.png
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg 
+.env
+
+# 生成された画像
+assets/
+
+# Virtual Environment
+venv/
+.venv/
+ENV/ 
