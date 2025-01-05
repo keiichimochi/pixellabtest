@@ -6,6 +6,27 @@ import os
 from dotenv import load_dotenv
 from PIL import Image
 import io
+from google.cloud import translate_v2 as translate
+import uuid
+import re
+
+def translate_to_english(text):
+    # Google Translate クライアントを初期化するナリ！
+    translate_client = translate.Client()
+    
+    try:
+        # 日本語から英語に翻訳するナリ！
+        result = translate_client.translate(
+            text,
+            target_language='en',
+            source_language='ja'
+        )
+        # 翻訳結果から特殊文字を除去するナリ！
+        cleaned_text = re.sub(r'[^\x00-\x7F]+', '', result['translatedText'])
+        return cleaned_text
+    except Exception as e:
+        print(f"翻訳でエラーが発生したナリ... (´;ω;｀) : {str(e)}")
+        return text  # エラーの場合は元のテキストを返すナリ！
 
 def create_pixel_art(prompt, width, height):
     # .envファイルから環境変数を読み込むナリ！
@@ -34,12 +55,16 @@ def create_pixel_art(prompt, width, height):
     if width > 400 or height > 400:
         raise ValueError("サイズは最大400x400ピクセルまでナリ！")
 
+    # プロンプトから特殊文字を除去するナリ！
+    cleaned_prompt = re.sub(r'[^\x00-\x7F]+', '', prompt)
+    
     payload = {
-        "description": prompt,
+        "description": cleaned_prompt,  # クリーンなプロンプトを使用
         "image_size": {
             "width": width,
             "height": height
-        }
+        },
+        "no_background": True
     }
 
     try:
@@ -58,10 +83,19 @@ def create_pixel_art(prompt, width, height):
         # assetsフォルダがなければ作成するナリ！
         os.makedirs("assets", exist_ok=True)
         
-        # ファイル名を作成するナリ！(プロンプトの最初の20文字を使用)
-        safe_prompt = "".join(c for c in prompt[:20] if c.isalnum() or c in (' ', '-', '_')).strip()
-        filename = f"assets/{safe_prompt}.png"
-        
+        # より安全なファイル名を生成するナリ！
+        try:
+            safe_filename = str(uuid.uuid4())[:8]  # ランダムなIDを生成
+            filename = f"assets/pixel_{safe_filename}.png"
+            print(f"ファイル名をエンコードしてみるナリ！: {filename}")
+            # エンコーディングのテストをするナリ！
+            filename.encode('latin-1')
+        except UnicodeEncodeError as e:
+            print(f"問題のある文字列ナリ！: {repr(filename)}")
+            print(f"エンコードできない文字の位置ナリ！: {e.start}-{e.end}")
+            print(f"エンコードできない文字ナリ！: {repr(filename[e.start:e.end])}")
+            raise
+
         # 画像を保存するナリ！
         image.save(filename)
         print(f"画像を保存したナリ！: {filename}")
@@ -70,6 +104,11 @@ def create_pixel_art(prompt, width, height):
 
     except Exception as e:
         print(f"エラーが発生してしまったナリ... (´;ω;｀) : {str(e)}")
+        print(f"エラーの種類ナリ！: {type(e)}")
+        if hasattr(e, '__traceback__'):
+            import traceback
+            print("詳細なエラー情報ナリ！:")
+            traceback.print_tb(e.__traceback__)
         return None
 
 def list_generated_images():
@@ -89,6 +128,12 @@ def create_ui():
                 prompt_input = gr.Textbox(
                     label="どんなピクセルアートを作りたいナリ？", 
                     placeholder="例: かわいい猫、ドット絵風の城など..."
+                )
+                
+                # 翻訳されたテキストを表示するナリ！
+                translated_text = gr.Textbox(
+                    label="英語に翻訳されたプロンプト",
+                    interactive=False
                 )
                 
                 with gr.Row():
@@ -122,18 +167,22 @@ def create_ui():
         
         def generate_and_update(prompt, width, height):
             try:
-                image_path = create_pixel_art(prompt, width, height)
+                # プロンプトを翻訳するナリ！
+                english_prompt = translate_to_english(prompt)
+                
+                # 翻訳されたプロンプトを渡すナリ！
+                image_path = create_pixel_art(english_prompt, width, height)
                 if image_path:
-                    return [image_path, list_generated_images()]
-                return [None, list_generated_images()]
+                    return [english_prompt, image_path, list_generated_images()]
+                return [english_prompt, None, list_generated_images()]
             except ValueError as e:
                 gr.Warning(str(e))
-                return [None, list_generated_images()]
+                return [None, None, list_generated_images()]
         
         generate_btn.click(
             fn=generate_and_update,
             inputs=[prompt_input, width_input, height_input],
-            outputs=[output_image, gallery]
+            outputs=[translated_text, output_image, gallery]
         )
     
     return app
@@ -143,4 +192,5 @@ if __name__ == "__main__":
     app.launch(
         server_name="0.0.0.0",
         server_port=7860,
+        share=True,
     )
